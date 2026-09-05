@@ -6,13 +6,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Open Energy Data Server
 
-## Private modular test branch
+## Modular test branch
 
 This test copy is based on official OEDS commit
 `38abf45139f332d59a198c1b0feb95016b323ee1`. The official project remains
 [open-energy-data-server/open-energy-data-server](https://github.com/open-energy-data-server/open-energy-data-server).
 Changes here are candidates for upstream review, not an upstream release.
 The original history, credits and license are retained.
+This repository is public; cloning it does not require a GitHub token.
 
 For the modular installation, start with
 [oeds-deployment](https://github.com/johannesschuhmacher/oeds-deployment).
