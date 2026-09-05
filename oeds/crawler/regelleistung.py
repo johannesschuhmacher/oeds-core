@@ -637,8 +637,9 @@ class RegelleistungCrawler(ContinuousCrawler):
                         log.info(f"handling {repr(e)} by concat")
                         self.write_concat_table(table_name, df)
                         log.info(f"replaced table {table_name}")
+                        latest_data_date += timedelta(days=1)
                     else:
-                        log.error(f"Encountered error {e}")
+                        raise
 
             log.info(
                 f"Finished writing new data to {table_name} with newest date being yesterday {(latest_data_date - timedelta(days=1))}"
@@ -664,14 +665,37 @@ class RegelleistungCrawler(ContinuousCrawler):
             )
 
     def crawl_temporal(self, begin: date | None = None, end: date | None = None):
-        # TODO refactoring, begin and end is not respected
         for table_name, url in TABLE_DATA.items():
-            self.write_data_in_table(table_name, url)
+            if self.config.get("tables") and table_name not in self.config["tables"]:
+                continue
+            if begin is None and end is None:
+                self.write_data_in_table(table_name, url)
+                continue
+            current = begin or self.get_latest_data(table_name) or TEMPORAL_START
+            finish = end or date.today()
+            while current < finish:
+                frame = get_df_for_date(url, current, table_name)
+                if not frame.empty:
+                    with self.engine.begin() as conn:
+                        column = get_date_column_from_table_name(table_name)
+                        if sqlalchemy.inspect(conn).has_table(table_name):
+                            conn.execute(
+                                text(
+                                    f'DELETE FROM "{table_name}" WHERE "{column}" >= :start AND "{column}" < :end'
+                                ),
+                                {"start": current, "end": current + timedelta(days=1)},
+                            )
+                        frame.to_sql(table_name, conn, if_exists="append", index=False)
+                current += timedelta(days=1)
 
         self.create_hypertable_if_not_exists()
 
     def create_hypertable_if_not_exists(self) -> None:
         for table_name in TABLE_DATA.keys():
+            if self.config.get("tables") and table_name not in self.config["tables"]:
+                continue
+            if not sqlalchemy.inspect(self.engine).has_table(table_name):
+                continue
             date_col = get_date_column_from_table_name(table_name)
             self.create_single_hypertable_if_not_exists(table_name, date_col)
 

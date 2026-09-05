@@ -45,7 +45,8 @@ metadata_info = {
 
 def get_turbines_with_power_curve():
     # create list of turbines with available powercurves
-    page = requests.get("https://www.wind-turbine-models.com/powercurves")
+    page = requests.get("https://www.wind-turbine-models.com/powercurves", timeout=45)
+    page.raise_for_status()
     soup = BeautifulSoup(page.text, "html.parser")
     # pull all text from the div
     name_list = soup.find(class_="chosen-select")
@@ -67,7 +68,8 @@ def download_turbine_curve(turbine_id, start=0, stop=25) -> pd.DataFrame:
         "windrange[]": [start, stop],
     }
 
-    resp = requests.post(url, headers=headers, data=data)
+    resp = requests.post(url, headers=headers, data=data, timeout=45)
+    resp.raise_for_status()
     strings = resp.json()["result"]
     begin = strings.find("data:")
     end = strings.find('"}]', begin)

@@ -4,6 +4,7 @@
 
 import logging
 import sqlite3
+from contextlib import closing
 from io import StringIO
 from pathlib import Path
 
@@ -11,7 +12,12 @@ import pandas as pd
 import requests
 from sqlalchemy import text
 
-from oeds.base_crawler import DEFAULT_CONFIG_LOCATION, DownloadOnceCrawler, load_config
+from oeds.base_crawler import (
+    DEFAULT_CONFIG_LOCATION,
+    DownloadOnceCrawler,
+    crawler_data_dir,
+    load_config,
+)
 
 log = logging.getLogger("opsd")
 log.setLevel(logging.INFO)
@@ -28,7 +34,6 @@ metadata_info = {
 }
 
 
-when2heat_path = Path(__file__).parent.parent / "when2heat.db"
 when2heat_url = (
     "https://data.open-power-system-data.org/when2heat/latest/when2heat.sqlite"
 )
@@ -58,27 +63,34 @@ class OpsdCrawler(DownloadOnceCrawler):
     def create_hypertable_if_not_exists(self):
         self.create_single_hypertable_if_not_exists("when2heat", "utc_timestamp")
 
-    def write_when2_heat(self, db_path: Path = when2heat_path):
+    def write_when2_heat(self, db_path: Path | None = None):
         """
         efficiency of heat pumps in different countries for different types of heatpumps
         """
+        db_path = db_path or crawler_data_dir() / "when2heat.db"
         if db_path.is_file():
             log.info(f"{db_path} already exists")
         else:
-            when2heat_file = requests.get(when2heat_url)
-            with open(db_path, "wb") as f:
-                f.write(when2heat_file.content)
+            with requests.get(when2heat_url, stream=True, timeout=90) as response:
+                response.raise_for_status()
+                temporary = db_path.with_suffix(".download")
+                with temporary.open("wb") as f:
+                    for block in response.iter_content(1024 * 1024):
+                        f.write(block)
+                temporary.replace(db_path)
             log.info(f"downloaded when2heat.db to {db_path}")
 
-        with sqlite3.connect(db_path) as conn:
-            data = pd.read_sql("select * from when2heat", conn)
-        data.index = pd.to_datetime(data["utc_timestamp"])
-        del data["cet_cest_timestamp"]
-        del data["utc_timestamp"]
-        log.info("data read successfully")
-
-        with self.engine.begin() as conn:
-            data.to_sql("when2heat", conn, if_exists="replace", chunksize=20000)
+        query = "SELECT * FROM when2heat ORDER BY utc_timestamp"
+        if self.config.get("max_rows"):
+            query += f" LIMIT {int(self.config['max_rows'])}"
+        with closing(sqlite3.connect(db_path)) as source, self.engine.begin() as conn:
+            mode = "replace"
+            for data in pd.read_sql(query, source, chunksize=1000):
+                data.index = pd.to_datetime(data["utc_timestamp"])
+                del data["cet_cest_timestamp"]
+                del data["utc_timestamp"]
+                data.to_sql("when2heat", conn, if_exists=mode, chunksize=1000)
+                mode = "append"
         log.info("when2heat data written successfully")
 
     def crawl_capacities(self):

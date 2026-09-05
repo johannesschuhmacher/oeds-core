@@ -11,12 +11,13 @@ REFIT (An electrical load measurements dataset of United Kingdom households from
 This dataset is typically used for NILM applications (non-intrusive load monitoring).
 """
 
-import io
 import logging
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-import cloudscraper
 import pandas as pd
 import py7zr
+import requests
 from sqlalchemy import text
 
 from oeds.base_crawler import DEFAULT_CONFIG_LOCATION, DownloadOnceCrawler, load_config
@@ -40,9 +41,6 @@ metadata_info = {
 REFIT_URL = (
     "https://pure.strath.ac.uk/ws/portalfiles/portal/52873459/Processed_Data_CSV.7z"
 )
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-}
 
 
 class RefitCrawler(DownloadOnceCrawler):
@@ -65,22 +63,30 @@ class RefitCrawler(DownloadOnceCrawler):
         self.create_single_hypertable_if_not_exists("refit", "Time")
 
     def download_refit_data(self):
-        # 2025-08-19 this only works with cloudflare circumvention
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(REFIT_URL, headers=headers)
-        response.raise_for_status()
-        log.info("Write refit to database")
-        with py7zr.SevenZipFile(io.BytesIO(response.content), mode="r") as z:
-            names = z.getnames()
+        with TemporaryDirectory(prefix="oeds-refit-") as directory:
+            archive_path = Path(directory) / "refit.7z"
+            with requests.get(REFIT_URL, stream=True, timeout=90) as response:
+                response.raise_for_status()
+                with archive_path.open("wb") as output:
+                    for block in response.iter_content(1024 * 1024):
+                        output.write(block)
+            with py7zr.SevenZipFile(archive_path, mode="r") as archive:
+                names = [name for name in archive.getnames() if name.endswith(".csv")]
+                if self.config.get("max_houses"):
+                    names = names[: int(self.config["max_houses"])]
+                archive.extract(path=directory, targets=names)
             for name in names:
-                file = z.read([name])[name]
-                df = pd.read_csv(file, index_col="Time", parse_dates=["Time"])
-                del df["Unix"]
-                df["house"] = name
-                log.info(f"writing {name}")
-
-                with self.engine.begin() as conn:
-                    df.to_sql("refit", conn, if_exists="append", chunksize=10000)
+                for df in pd.read_csv(
+                    Path(directory) / name,
+                    index_col="Time",
+                    parse_dates=["Time"],
+                    chunksize=10000,
+                    nrows=self.config.get("max_rows"),
+                ):
+                    del df["Unix"]
+                    df["house"] = name
+                    with self.engine.begin() as conn:
+                        df.to_sql("refit", conn, if_exists="append", chunksize=10000)
 
 
 if __name__ == "__main__":

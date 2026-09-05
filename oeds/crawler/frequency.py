@@ -53,11 +53,15 @@ class FrequencyCrawler(DownloadOnceCrawler):
 
     def crawl_structural(self, recreate: bool = False):
         if not self.structure_exists() or recreate:
-            self.crawl_frequency()
+            self.crawl_frequency(
+                self.config.get("start_year", 2011), self.config.get("end_year", 2019)
+            )
         self.create_hypertable_if_not_exists()
 
     def crawl_year_by_url(self, url):
-        for name, thefile, count in download_extract_zip(url):
+        for number, (name, thefile, count) in enumerate(download_extract_zip(url)):
+            if self.config.get("max_files") and number >= int(self.config["max_files"]):
+                break
             log.info("file %s", name)
             if count == 1:  # only 2010
                 df = pd.read_csv(
@@ -66,6 +70,7 @@ class FrequencyCrawler(DownloadOnceCrawler):
                     decimal=",",
                     header=None,
                     names=["date_time", "frequency"],
+                    nrows=self.config.get("max_rows"),
                     # index_col='date',
                     # parse_dates=['date_time']
                 )
@@ -73,12 +78,12 @@ class FrequencyCrawler(DownloadOnceCrawler):
                     df.pop("date_time"), format="%d.%m.%Y %H:%M:%S"
                 )
 
-                del df["date_time"]
             else:
                 df = pd.read_csv(
                     thefile,
                     sep=",",
                     header=None,
+                    nrows=self.config.get("max_rows"),
                 )
                 # timestamps like 2013/10/27 2A:00:00 can't be read
                 df.index = pd.to_datetime(df.pop(0) + " " + df.pop(1), errors="coerce")

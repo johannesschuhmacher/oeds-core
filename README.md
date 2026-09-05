@@ -6,6 +6,36 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Open Energy Data Server
 
+## Private modular test branch
+
+This test copy is based on official OEDS commit
+`38abf45139f332d59a198c1b0feb95016b323ee1`. The official project remains
+[open-energy-data-server/open-energy-data-server](https://github.com/open-energy-data-server/open-energy-data-server).
+Changes here are candidates for upstream review, not an upstream release.
+The original history, credits and license are retained.
+
+For the modular installation, start with
+[oeds-deployment](https://github.com/johannesschuhmacher/oeds-deployment).
+Its compatibility file selects the tested core revision. Scheduler/UI,
+post-processing and KIT crawler extensions remain separate optional packages.
+The following original instructions describe the standalone upstream layout.
+
+Core download caches now use `OEDS_CRAWLER_DATA_DIR` (default `crawler/data`)
+for NUTS/postcodes, OPSD and OEP. REFIT and VEA process archives in bounded
+blocks instead of loading the complete expanded dataset into memory.
+Optional small-test settings are `max_rows` (OPSD/OEP/REFIT/frequency/London/
+charging register), `max_profiles` (VEA), `max_houses` (REFIT), `max_buildings`
+(E2Watch), `max_files` (frequency/London/JRC), `countries` (JRC), and
+`start_year`/`end_year` (frequency). Omit these limits for full imports.
+Regelleistung accepts explicit start/end dates (end exclusive) and a `tables`
+subset. Repeated bounded runs replace those days rather than duplicate them.
+These settings do not make the sampled database a complete source archive.
+Some providers still require credentials, local licensed archives or unavailable
+endpoints; see the deployment live-test report for measured coverage.
+
+Focused runtime regressions use the existing provider dependencies:
+`python -m unittest discover -s tests -v`.
+
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10607894.svg)](https://doi.org/10.5281/zenodo.10607894)
 
 This is a repository that contains python web-crawler scripts to download various available data, which is useful for simulation or analysis of Energy Systems.

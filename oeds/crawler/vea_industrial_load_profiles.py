@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import io
 import logging
+import tempfile
 import zipfile
 
 import pandas as pd
@@ -46,28 +46,34 @@ class IndustrialLoadProfileCrawler(DownloadOnceCrawler):
 
     def crawl_structural(self, recreate: bool = False):
         if not self.structure_exists() or recreate:
-            # request zip archive
             self.request_extract_zip_archive()
-
-            # read load_data
-            self.read_file(filename="load")
-
-            # create timestamp dictionary to replace "timeX" with datetime object
-            self.create_timestep_datetime_dict(self.df.columns)
-
-            # transform and write load data
-            self.transform_load_hlt_data(name="load")
-            self.write_to_database(name="load")
-
-            # read, transform and write hlt data
-            self.read_file(filename="hlt")
-            self.transform_load_hlt_data(name="hlt")
-            self.write_to_database(name="high_load_times")
-
-            # read in master data and write to database
-            self.read_file(filename="master")
-            self.lower_column_names()
-            self.write_to_database(name="master")
+            try:
+                # Melt only a small profile block, not 188 million values at once.
+                for filename, table in [
+                    ("load_profiles_tabsep.csv", "load"),
+                    ("hlt_profiles_tabsep.csv", "high_load_times"),
+                    ("master_data_tabsep.csv", "master"),
+                ]:
+                    first = True
+                    with self.archive.open(filename) as file:
+                        for frame in pd.read_csv(
+                            file,
+                            sep="\t",
+                            chunksize=4,
+                            nrows=self.config.get("max_profiles"),
+                        ):
+                            self.df = frame
+                            if table == "master":
+                                self.lower_column_names()
+                            else:
+                                self.create_timestep_datetime_dict(self.df.columns)
+                                self.transform_load_hlt_data(name=table)
+                            self.write_to_database(name=table, replace=first)
+                            first = False
+            finally:
+                self.archive.close()
+                self.archive_file.close()
+            self.create_hypertable_if_not_exists()
 
     def request_extract_zip_archive(self):
         """
@@ -80,16 +86,17 @@ class IndustrialLoadProfileCrawler(DownloadOnceCrawler):
 
         log.info("Requesting zip archive from zenodo")
 
-        response = requests.get(url)
-
-        response.raise_for_status()
-
-        log.info("Succesfully requested zip archive from zenodo")
-
-        with zipfile.ZipFile(io.BytesIO(response.content)) as thezip:
-            self.master_data_file = thezip.open(name="master_data_tabsep.csv")
-            self.hlt_profiles_file = thezip.open(name="hlt_profiles_tabsep.csv")
-            self.load_profiles_file = thezip.open(name="load_profiles_tabsep.csv")
+        self.archive_file = tempfile.TemporaryFile()
+        try:
+            with requests.get(url, stream=True, timeout=90) as response:
+                response.raise_for_status()
+                for block in response.iter_content(1024 * 1024):
+                    self.archive_file.write(block)
+            self.archive_file.seek(0)
+            self.archive = zipfile.ZipFile(self.archive_file)
+        except Exception:
+            self.archive_file.close()
+            raise
 
     def read_file(self, filename: str | None = None):
         """Reads the given file and returns contents as pd.DataFrame.
@@ -101,13 +108,14 @@ class IndustrialLoadProfileCrawler(DownloadOnceCrawler):
         log.info(f"Trying to read file {filename} into pd.DataFrame")
 
         if filename == "master":
-            file = self.master_data_file
+            name = "master_data_tabsep.csv"
         elif filename == "load":
-            file = self.load_profiles_file
+            name = "load_profiles_tabsep.csv"
         elif filename == "hlt":
-            file = self.hlt_profiles_file
+            name = "hlt_profiles_tabsep.csv"
 
-        self.df = pd.read_csv(file, sep="\t")
+        with self.archive.open(name) as file:
+            self.df = pd.read_csv(file, sep="\t")
 
         log.info("Succesfully read file into pd.DataFrame")
 
@@ -158,7 +166,7 @@ class IndustrialLoadProfileCrawler(DownloadOnceCrawler):
 
         log.info("Succesfully converted hlt / load profile")
 
-    def write_to_database(self, name: str) -> None:
+    def write_to_database(self, name: str, replace: bool = False) -> None:
         """Writes dataframe to database.
 
         Args:
@@ -168,13 +176,12 @@ class IndustrialLoadProfileCrawler(DownloadOnceCrawler):
         log.info(f"Trying to write {name} to database")
 
         rows = 200000
-        list_df = [self.df[i : i + rows] for i in range(0, self.df.shape[0], rows)]
-
-        for df in tqdm(list_df):
+        for start in tqdm(range(0, len(self.df), rows)):
+            df = self.df.iloc[start : start + rows]
             df.to_sql(
                 name=name,
                 con=self.engine,
-                if_exists="append",
+                if_exists="replace" if replace and start == 0 else "append",
                 index=False,
             )
 

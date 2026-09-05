@@ -55,14 +55,23 @@ class LondonLoadData(DownloadOnceCrawler):
 
     def download_london_data(self):
         log.info("Download london smartmeter energy dataset")
-        response = requests.get(LONDON_PARTITIONED_URL)
+        response = requests.get(LONDON_PARTITIONED_URL, timeout=90)
+        response.raise_for_status()
         with zipfile.ZipFile(io.BytesIO(response.content)) as thezip:
             # should be single file only if full_data
             log.info("Write london energy dataset to database")
-            for zipinfo in thezip.infolist():
+            files = [
+                info for info in thezip.infolist() if info.filename.endswith(".csv")
+            ]
+            if self.config.get("max_files"):
+                files = files[: int(self.config["max_files"])]
+            for zipinfo in files:
                 with thezip.open(zipinfo) as thefile:
                     df = pd.read_csv(
-                        thefile, parse_dates=["DateTime"], index_col="DateTime"
+                        thefile,
+                        parse_dates=["DateTime"],
+                        index_col="DateTime",
+                        nrows=self.config.get("max_rows"),
                     )
 
                     df.columns = [col.strip() for col in df.columns]

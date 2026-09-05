@@ -93,7 +93,9 @@ class E2WatchCrawler(ContinuousCrawler, DownloadOnceCrawler):
         """
         sql = "select * from buildings"
         with self.engine.begin() as conn:
-            building_data = pd.read_sql(sql, conn, parse_dates=["timestamp"])
+            building_data = pd.read_sql(sql, conn, index_col="bilanzkreis_id")
+        if self.config.get("max_buildings"):
+            building_data = building_data.head(int(self.config["max_buildings"]))
 
         if begin < TEMPORAL_START:
             begin = TEMPORAL_START
@@ -216,7 +218,7 @@ class E2WatchCrawler(ContinuousCrawler, DownloadOnceCrawler):
             )
             url = f"https://stadt-aachen.e2watch.de/gebaeude/getMainChartData/{bilanzkreis_id}?medium={measurement}&from={begin_str}&to={end_str}&type=stundenverbrauch"
             log.info(url)
-            response = requests.get(url)
+            response = requests.get(url, timeout=45)
             try:
                 response.raise_for_status()
             except requests.exceptions.HTTPError as e:

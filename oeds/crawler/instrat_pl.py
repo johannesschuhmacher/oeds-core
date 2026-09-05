@@ -85,8 +85,13 @@ class InstratPlCrawler(ContinuousCrawler):
         log.info(f"Downloading instrat_pl data from {date_from} to {date_to}")
 
         def download_data(url):
-            data = requests.get(url, params=params, headers=headers)
+            data = requests.get(url, params=params, headers=headers, timeout=45)
+            data.raise_for_status()
             df = pd.read_json(io.StringIO(data.text))
+            if df.empty:
+                raise ValueError(
+                    f"No Instrat data returned for {date_from} to {date_to}: {url}"
+                )
             df = df.set_index("date")
             df.index = df.index.tz_localize(None)
             return df

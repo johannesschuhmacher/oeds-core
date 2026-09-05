@@ -22,7 +22,12 @@ import requests
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 
-from oeds.base_crawler import DEFAULT_CONFIG_LOCATION, DownloadOnceCrawler, load_config
+from oeds.base_crawler import (
+    DEFAULT_CONFIG_LOCATION,
+    DownloadOnceCrawler,
+    crawler_data_dir,
+    load_config,
+)
 
 log = logging.getLogger(__name__)
 
@@ -57,10 +62,11 @@ class NutsCrawler(DownloadOnceCrawler):
     def download_nuts(self):
         # download file
         log.info("download EU NUTS shapefile")
-        r = requests.get(EU_SHP_NUTS_URL)
+        r = requests.get(EU_SHP_NUTS_URL, timeout=90)
+        r.raise_for_status()
         z = zipfile.ZipFile(io.BytesIO(r.content))
         # extract to shapes folder
-        shapes_path = Path(__file__).parent.parent / "shapes"
+        shapes_path = crawler_data_dir() / "shapes"
         z.extractall(shapes_path)
         geo_path = shapes_path / EU_SHP_NUTS_FILENAME
 
@@ -86,11 +92,17 @@ class NutsCrawler(DownloadOnceCrawler):
         log.info("finished writing EU NUTS shapefile")
 
         log.info("download EU DE zipcode list")
-        r = requests.get(EU_DE_ZIP_URL)
+        r = requests.get(EU_DE_ZIP_URL, timeout=90)
+        r.raise_for_status()
         z = zipfile.ZipFile(io.BytesIO(r.content))
         # open pc2025_DE_NUTS-2024_v1.0.csv with pandas
-        with z.open(EU_DE_ZIP_FILENAME) as f:
-            plz_list = pd.read_csv(f, sep=";", index_col="CODE", quotechar="'")
+        filename = next(
+            name for name in z.namelist() if Path(name).name == EU_DE_ZIP_FILENAME
+        )
+        with z.open(filename) as f:
+            plz_list = pd.read_csv(
+                f, sep=";", index_col="CODE", quotechar="'", dtype={"CODE": str}
+            )
 
         # remove str literals from plzlist with read_csv
         # where levl_code == 1 and country == DE

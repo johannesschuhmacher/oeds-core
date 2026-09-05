@@ -54,11 +54,26 @@ class JrcIdeesCrawler(DownloadOnceCrawler):
             log.info("Finished writing JRC-IDEES dataset to Database")
 
     def download_jrc_dataset(self):
-        response = requests.get(JRC_IDEES_URL)
+        response = requests.get(JRC_IDEES_URL, timeout=90)
+        response.raise_for_status()
         log.info("Write JRC-IDEES dataset to database")
         self.table_names = []
         with zipfile.ZipFile(io.BytesIO(response.content)) as thezip:
-            for zipinfo in thezip.infolist():
+            files = [
+                info
+                for info in thezip.infolist()
+                if info.filename.endswith((".xls", ".xlsx"))
+            ]
+            if self.config.get("countries"):
+                files = [
+                    info
+                    for info in files
+                    if info.filename.rsplit(".", 1)[0].split("_")[-1]
+                    in self.config["countries"]
+                ]
+            if self.config.get("max_files"):
+                files = files[: int(self.config["max_files"])]
+            for zipinfo in files:
                 try:
                     with thezip.open(zipinfo) as thefile:
                         # zipinfo = name?

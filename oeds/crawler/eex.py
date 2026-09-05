@@ -21,7 +21,7 @@ from glob import glob
 
 import pandas as pd
 
-from oeds.base_crawler import BaseCrawler
+from oeds.base_crawler import DEFAULT_CONFIG_LOCATION, BaseCrawler, load_config
 
 log = logging.getLogger("eex")
 log.setLevel(logging.INFO)
@@ -70,8 +70,23 @@ No further parsing is needed else.
 
 
 class EEXCrawler(BaseCrawler):
-    def __init__(self, schema_name):
-        super().__init__(schema_name)
+    def __init__(self, schema_name, config=None):
+        super().__init__(
+            schema_name,
+            config if config is not None else load_config(DEFAULT_CONFIG_LOCATION),
+        )
+
+    def crawl_structural(self, recreate=False):
+        path = pathlib.Path(self.config.get("data_path", eex_data_path)).expanduser()
+        if not path.is_dir():
+            raise FileNotFoundError(
+                f"EEX local archive is missing: {path}. Configure data_path after downloading your licensed archive."
+            )
+        self.download_with_country(str(path / "trade_data/power"))
+        self.download_without_country(str(path / "market_data/environmental"))
+        self.download_with_country(str(path / "market_data/power"))
+        self.download_with_country(str(path / "market_data/natgas"))
+        self.set_metadata(metadata_info)
 
     def read_eex_trade_spot_file(self, filename):
         df = pd.read_csv(filename, skiprows=1, index_col="Trade ID")

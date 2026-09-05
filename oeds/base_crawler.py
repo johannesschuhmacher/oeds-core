@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import logging
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict
@@ -13,6 +14,12 @@ from sqlalchemy import Engine, create_engine, event, text
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_LOCATION = Path(__file__).parent.parent / "config.yml"
+
+
+def crawler_data_dir() -> Path:
+    path = Path(os.environ.get("OEDS_CRAWLER_DATA_DIR", "crawler/data")).expanduser()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 class CrawlerConfig(TypedDict):
