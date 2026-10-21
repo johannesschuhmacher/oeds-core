@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import argparse
 import logging
+from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
+from typing import Any
 
 from oeds.base_crawler import (
     BaseCrawler,
@@ -16,6 +18,26 @@ from oeds.base_crawler import (
 
 log = logging.getLogger("OEDS")
 log.setLevel(logging.INFO)
+
+
+def available_crawlers() -> dict[str, Any]:
+    """Built-in crawlers plus those other packages register as ``oeds.crawlers``.
+
+    A package declares ``[project.entry-points."oeds.crawlers"]`` with
+    ``name = "module:Class"`` in its pyproject.toml. Entry points are kept
+    unloaded here and imported only when selected, so listing stays cheap. A
+    registered crawler replaces a built-in one of the same name.
+    """
+    from oeds.crawler import crawlers
+
+    registry: dict[str, Any] = dict(crawlers)
+    for entry in entry_points(group="oeds.crawlers"):
+        registry[entry.name] = entry
+    return registry
+
+
+def resolve_crawler_class(target: Any) -> type[BaseCrawler]:
+    return target.load() if isinstance(target, EntryPoint) else target
 
 
 def start_crawler(crawler: BaseCrawler):
@@ -48,7 +70,7 @@ def cli(args=None):
     parsed_args = parser.parse_args(args)
 
     logging.basicConfig(level=parsed_args.loglevel)
-    from oeds.crawler import crawlers
+    crawlers = available_crawlers()
 
     selected_crawlers = (
         parsed_args.crawler_list if parsed_args.crawler_list else list(crawlers.keys())
@@ -64,8 +86,8 @@ def cli(args=None):
     for crawler_name in selected_crawlers:
         log.info("Starting crawler: %s", crawler_name)
         try:
-            crawler_class = crawlers[crawler_name]
-        except Exception:
+            crawler_class = resolve_crawler_class(crawlers[crawler_name])
+        except KeyError:
             raise ValueError(f"crawler {crawler_name} does not exist")
 
         crawler = crawler_class(crawler_name, config)
