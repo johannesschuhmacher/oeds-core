@@ -44,7 +44,10 @@ log = logging.getLogger("ecmwf")
 
 # Next to the other crawler downloads (OEDS_CRAWLER_DATA_DIR, see crawler_data_dir);
 # an installed package directory is not writable.
-TEMP_DIR = Path(os.environ.get("OEDS_CRAWLER_DATA_DIR", "crawler/data")).expanduser() / "ecmwf_grb_files"
+TEMP_DIR = (
+    Path(os.environ.get("OEDS_CRAWLER_DATA_DIR", "crawler/data")).expanduser()
+    / "ecmwf_grb_files"
+)
 
 # coords for europe according to:
 # https://web.archive.org/web/20240817225744/https://cds.climate.copernicus.eu/toolbox/doc/how-to/1_how_to_retrieve_data/1_how_to_retrieve_data.html#retrieve-a-geographical-subset-and-change-the-default-resolution
