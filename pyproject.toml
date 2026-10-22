@@ -58,7 +58,7 @@ crawlers = [
     "psycopg2-binary",
     "py7zr<1",
     "pyarrow",
-    "pygrib",
+    "pygrib; platform_system != 'Windows'",  # no Windows wheels; only oeds.crawler.dwd uses it
     "pyshp",
     "requests",
     "roiti-gie @ git+https://github.com/maurerle/roiti-gie@maurerle",
