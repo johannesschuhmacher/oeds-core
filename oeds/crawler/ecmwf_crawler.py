@@ -4,6 +4,7 @@
 
 import csv
 import logging
+import os
 import shutil
 import zipfile
 from datetime import date, datetime, timedelta
@@ -41,7 +42,9 @@ from oeds.base_crawler import (
 
 log = logging.getLogger("ecmwf")
 
-TEMP_DIR = Path(__file__).parent.parent / "ecmwf_grb_files"
+# Next to the other crawler downloads (OEDS_CRAWLER_DATA_DIR, see crawler_data_dir);
+# an installed package directory is not writable.
+TEMP_DIR = Path(os.environ.get("OEDS_CRAWLER_DATA_DIR", "crawler/data")).expanduser() / "ecmwf_grb_files"
 
 # coords for europe according to:
 # https://web.archive.org/web/20240817225744/https://cds.climate.copernicus.eu/toolbox/doc/how-to/1_how_to_retrieve_data/1_how_to_retrieve_data.html#retrieve-a-geographical-subset-and-change-the-default-resolution

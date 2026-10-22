@@ -76,3 +76,7 @@ oeds = "oeds.main:cli"
 # Include oeds.crawler: with packages = ["oeds"] an installed package had no crawlers.
 [tool.setuptools.packages.find]
 include = ["oeds*"]
+
+# Static inputs of the crawlers (e2watch buildings, DWD/EEX coordinate grids).
+[tool.setuptools.package-data]
+oeds = ["data/*"]
