@@ -36,10 +36,43 @@ dependencies = [
     "pyyaml >=6.0.2",
     "open-mastr >=0.15.0",
     "beautifulsoup4 >= 4.15.0",
+    "sqlalchemy",
+]
+
+[project.optional-dependencies]
+# Everything the crawlers in oeds.crawler import (requirements.txt), so that an
+# installed package can run them: pip install "oeds[crawlers]".
+crawlers = [
+    "cdsapi",
+    "cfgrib",
+    "cloudscraper",
+    "eccodes",
+    "entsoe-py",
+    "geoalchemy2",
+    "geopandas",
+    "geopy",
+    "jao-py",
+    "json5",
+    "lxml",
+    "openpyxl",
+    "psycopg2-binary",
+    "py7zr<1",
+    "pyarrow",
+    "pygrib",
+    "pyshp",
+    "requests",
+    "roiti-gie @ git+https://github.com/maurerle/roiti-gie@maurerle",
+    "scipy",
+    "shapely",
+    "tqdm",
+    "tzdata",
+    "xarray",
+    "yfinance",
 ]
 
 [project.scripts]
 oeds = "oeds.main:cli"
 
-[tool.setuptools]
-packages = ["oeds"]
+# Include oeds.crawler: with packages = ["oeds"] an installed package had no crawlers.
+[tool.setuptools.packages.find]
+include = ["oeds*"]
